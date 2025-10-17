@@ -2,13 +2,16 @@
   "name": "youtube-clip-analyzer",
   "version": "1.0.0",
   "main": "getClipInfo.js",
+  "bin": {
+    "youtube-clip-analyzer": "./cli.js"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": ["youtube", "clip", "analyzer", "puppeteer"],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "A CLI tool to extract information from YouTube clip URLs",
   "dependencies": {
     "chromedriver": "^141.0.3",
     "puppeteer": "^24.25.0",
