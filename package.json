@@ -1,0 +1,17 @@
+{
+  "name": "youtube-clip-analyzer",
+  "version": "1.0.0",
+  "main": "getClipInfo.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "chromedriver": "^141.0.3",
+    "puppeteer": "^24.25.0",
+    "selenium-webdriver": "^4.36.0"
+  }
+}
