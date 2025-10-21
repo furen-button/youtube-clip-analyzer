@@ -10,7 +10,7 @@
   },
   "keywords": ["youtube", "clip", "analyzer", "puppeteer"],
   "author": "",
-  "license": "ISC",
+  "license": "",
   "description": "A CLI tool to extract information from YouTube clip URLs",
   "dependencies": {
     "chromedriver": "^141.0.3",
