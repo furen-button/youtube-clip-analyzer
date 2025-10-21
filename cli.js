@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const puppeteer = require('puppeteer');
+const fs = require('fs');
 
 async function fetchClipInfoPuppeteer(url) {
   console.log('Starting browser...');
@@ -20,33 +21,33 @@ async function fetchClipInfoPuppeteer(url) {
     
     console.log('Page loaded, extracting metadata...');
     
-    // メタタグが存在するまで待機
+    // Wait for meta tag
     try {
       await page.waitForSelector('meta[property="og:title"]', { timeout: 10000 });
     } catch (e) {
       console.log('Warning: og:title not found, continuing anyway...');
     }
     
-    // メタデータとページ内のデータを取得
+    // Extract metadata and page data
     const data = await page.evaluate(() => {
       const getMetaContent = (property) => {
         const meta = document.querySelector(`meta[property="${property}"]`);
         return meta ? meta.getAttribute('content') : null;
       };
       
-      // ytInitialDataからクリップ情報を取得
+      // Get clip information from ytInitialData
       let clipData = null;
       let videoId = null;
-      let startTime = null;
-      let endTime = null;
+      let startTimeMs = null;
+      let endTimeMs = null;
       
       try {
-        // ページ内のスクリプトからクリップ情報を探す
+        // Search for clip information in page scripts
         const scripts = Array.from(document.querySelectorAll('script'));
         for (const script of scripts) {
           const text = script.textContent || '';
           
-          // ytInitialPlayerResponseを探す（優先）
+          // Search for ytInitialPlayerResponse (priority)
           if (text.includes('var ytInitialPlayerResponse')) {
             const match = text.match(/var ytInitialPlayerResponse\s*=\s*({.+?});/s);
             if (match) {
@@ -57,12 +58,12 @@ async function fetchClipInfoPuppeteer(url) {
                   if (!videoId) videoId = playerData.videoDetails.videoId;
                 }
                 
-                // clipConfigを探す
+                // Search for clipConfig
                 if (playerData.clipConfig) {
                   clipData = playerData.clipConfig;
                 }
                 
-                // microformatを探す
+                // Search for microformat
                 if (playerData.microformat && playerData.microformat.playerMicroformatRenderer) {
                   const microformat = playerData.microformat.playerMicroformatRenderer;
                   if (microformat.clipConfig) {
@@ -75,23 +76,23 @@ async function fetchClipInfoPuppeteer(url) {
             }
           }
           
-          // ytInitialDataを探す
+          // Search for ytInitialData
           if (text.includes('var ytInitialData')) {
             const match = text.match(/var ytInitialData\s*=\s*({.+?});/s);
             if (match) {
               try {
                 const ytData = JSON.parse(match[1]);
                 
-                // クリップ時間情報を持つオブジェクトを探す
+                // Search for object with time information
                 const findTimeInfo = (obj, depth = 0) => {
                   if (depth > 15 || !obj || typeof obj !== 'object') return null;
                   
-                  // startTimeMs/endTimeMs を持つオブジェクトを探す
+                  // Search for object with startTimeMs/endTimeMs
                   if (obj.startTimeMs !== undefined && obj.endTimeMs !== undefined) {
                     return obj;
                   }
                   
-                  // clipConfig を探す
+                  // Search for clipConfig
                   if (obj.clipConfig && (obj.clipConfig.startTimeMs || obj.clipConfig.startTimeSeconds)) {
                     return obj.clipConfig;
                   }
@@ -114,16 +115,16 @@ async function fetchClipInfoPuppeteer(url) {
           }
         }
         
-        // clipDataから情報を抽出
+        // Extract information from clipData
         if (clipData) {
           if (!videoId) videoId = clipData.postId || clipData.videoId || null;
-          startTime = clipData.startTimeMs ? Math.floor(clipData.startTimeMs / 1000) : 
-                     clipData.startTimeSeconds || null;
-          endTime = clipData.endTimeMs ? Math.floor(clipData.endTimeMs / 1000) : 
-                   clipData.endTimeSeconds || null;
+          startTimeMs = clipData.startTimeMs ? clipData.startTimeMs : 
+                     (clipData.startTimeSeconds * 1000) || null;
+          endTimeMs = clipData.endTimeMs ? clipData.endTimeMs : 
+                   (clipData.endTimeSeconds * 1000) || null;
         }
         
-        // サムネイルURLから動画IDを抽出（フォールバック）
+        // Extract video ID from thumbnail URL (fallback)
         if (!videoId) {
           const imageUrl = getMetaContent('og:image');
           if (imageUrl) {
@@ -143,43 +144,18 @@ async function fetchClipInfoPuppeteer(url) {
         clipUrl: getMetaContent('og:url'),
         image: getMetaContent('og:image'),
         videoId: videoId,
-        startTime: startTime,
-        endTime: endTime
+        startTimeMs: Number(startTimeMs),
+        endTimeMs: Number(endTimeMs),
+        durationMs: (startTimeMs !== null && endTimeMs !== null) ? (endTimeMs - startTimeMs) : null
       };
     });
     
-    // descriptionから再生秒数を抽出（フォールバック）
-    let duration = null;
-    
-    if (data.startTime !== null && data.endTime !== null) {
-      duration = data.endTime - data.startTime;
-    } else if (data.description) {
-      // "7 seconds" のようなフォーマットを探す
-      const secondsMatch = data.description.match(/(\d+)\s+seconds?/i);
-      if (secondsMatch) {
-        duration = parseInt(secondsMatch[1], 10);
-      } else {
-        // "0:15 - 0:30" のようなフォーマットを探す
-        const timeMatch = data.description.match(/(\d+):(\d+)\s*-\s*(\d+):(\d+)/);
-        if (timeMatch) {
-          const startMin = parseInt(timeMatch[1], 10);
-          const startSec = parseInt(timeMatch[2], 10);
-          const endMin = parseInt(timeMatch[3], 10);
-          const endSec = parseInt(timeMatch[4], 10);
-          
-          if (data.startTime === null) data.startTime = startMin * 60 + startSec;
-          if (data.endTime === null) data.endTime = endMin * 60 + endSec;
-          duration = data.endTime - data.startTime;
-        }
-      }
-    }
-    
-    // 元動画URLを構築
+    // Build original video URL
     let videoUrl = null;
     if (data.videoId) {
       videoUrl = `https://www.youtube.com/watch?v=${data.videoId}`;
-      if (data.startTime !== null) {
-        videoUrl += `&t=${data.startTime}s`;
+      if (data.startTimeMs !== null) {
+        videoUrl += `&t=${Math.floor(data.startTimeMs / 1000)}s`;
       }
     }
     
@@ -190,54 +166,110 @@ async function fetchClipInfoPuppeteer(url) {
       title: data.title,
       description: data.description,
       image: data.image,
-      startTime: data.startTime,
-      endTime: data.endTime,
-      duration: duration,
+      startTimeMs: data.startTimeMs,
+      endTimeMs: data.endTimeMs,
+      durationMs: data.durationMs,
     };
   } finally {
     await browser.close();
   }
 }
 
-function formatTime(seconds) {
-  if (seconds === null) return '取得できませんでした';
+function formatTime(milliseconds) {
+  if (milliseconds === null) return 'N/A';
+  const seconds = Math.floor(milliseconds / 1000);
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
-  return `${mins}分${secs}秒 (${seconds}秒)`;
+  return `${mins}m${secs}s (${seconds}s)`;
 }
 
 // コマンドライン引数を取得
 const args = process.argv.slice(2);
 
 if (args.length === 0) {
-  console.error('使い方: youtube-clip-analyzer <YouTube Clip URL>');
-  console.error('例: youtube-clip-analyzer https://www.youtube.com/clip/UgkxzjQPU1Ug_59l4pDl9d6-E0WR_RbjTsSl');
+  console.error('Usage: youtube-clip-analyzer <YouTube Clip URL> [options]');
+  console.error('Example: youtube-clip-analyzer https://www.youtube.com/clip/UgkxzjQPU1Ug_59l4pDl9d6-E0WR_RbjTsSl');
+  console.error('\nOptions:');
+  console.error('  --json <file>    Save result to JSON file');
+  console.error('  --output <file>  Save result to JSON file (same as --json)');
+  console.error('  -o <file>        Save result to JSON file (short form)');
   process.exit(1);
 }
 
-const clipUrl = args[0];
+let clipUrl = null;
+let outputFile = null;
+
+// Parse arguments
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i];
+  
+  if (arg === '--json' || arg === '--output' || arg === '-o') {
+    if (i + 1 < args.length) {
+      outputFile = args[i + 1];
+      i++; // Skip next argument
+    } else {
+      console.error('Error: ' + arg + ' requires a filename');
+      process.exit(1);
+    }
+  } else if (!clipUrl) {
+    clipUrl = arg;
+  }
+}
+
+if (!clipUrl) {
+  console.error('Error: Please specify a YouTube Clip URL');
+  process.exit(1);
+}
 
 // URLの検証
 if (!clipUrl.includes('youtube.com/clip/') && !clipUrl.includes('youtu.be/clip/')) {
-  console.error('エラー: 有効なYouTubeクリップURLを指定してください');
+  console.error('Error: Please provide a valid YouTube clip URL');
   process.exit(1);
 }
 
 fetchClipInfoPuppeteer(clipUrl).then(info => {
-  console.log('\n=== クリップ情報 ===');
-  console.log('クリップURL:', info.clipUrl);
-  console.log('動画URL:', info.videoUrl || '取得できませんでした');
-  console.log('動画ID:', info.videoId || '取得できませんでした');
-  console.log('タイトル:', info.title || '取得できませんでした');
-  console.log('説明:', info.description || '取得できませんでした');
-  console.log('サムネイル:', info.image || '取得できませんでした');
-  console.log('開始時間:', formatTime(info.startTime));
-  console.log('終了時間:', formatTime(info.endTime));
-  console.log('再生秒数:', info.duration !== null ? `${info.duration}秒` : '取得できませんでした');
-  console.log('==================\n');
+  // JSON output
+  if (outputFile) {
+    const jsonData = {
+      clipUrl: info.clipUrl,
+      videoUrl: info.videoUrl,
+      videoId: info.videoId,
+      title: info.title,
+      description: info.description,
+      thumbnail: info.image,
+      startTimeMs: info.startTimeMs,
+      endTimeMs: info.endTimeMs,
+      durationMs: info.durationMs,
+      startTimeFormatted: formatTime(info.startTimeMs),
+      endTimeFormatted: formatTime(info.endTimeMs),
+      extractedAt: new Date().toISOString()
+    };
+    
+    try {
+      fs.writeFileSync(outputFile, JSON.stringify(jsonData, null, 2), 'utf8');
+      console.log(`✓ Clip information saved to ${outputFile}`);
+    } catch (err) {
+      console.error('Error: Failed to write file:', err.message);
+      process.exit(1);
+    }
+  } else {
+    // Console output
+    console.log('\n=== Clip Information ===');
+    console.log('Clip URL:', info.clipUrl);
+    console.log('Video URL:', info.videoUrl || 'N/A');
+    console.log('Video ID:', info.videoId || 'N/A');
+    console.log('Title:', info.title || 'N/A');
+    console.log('Description:', info.description || 'N/A');
+    console.log('Thumbnail:', info.image || 'N/A');
+    console.log('Start Time:', formatTime(info.startTimeMs));
+    console.log('End Time:', formatTime(info.endTimeMs));
+    console.log('Duration:', info.durationMs !== null ? `${info.durationMs / 1000}s` : 'N/A');
+    console.log('=======================\n');
+  }
+  
   process.exit(0);
 }).catch(err => {
-  console.error('\nエラーが発生しました:', err.message);
+  console.error('\nError:', err.message);
   console.error(err);
   process.exit(1);
 });
