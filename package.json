@@ -1,7 +1,7 @@
 {
   "name": "youtube-clip-analyzer",
   "version": "1.0.0",
-  "main": "getClipInfo.js",
+  "main": "cli.js",
   "bin": {
     "youtube-clip-analyzer": "./cli.js"
   },
