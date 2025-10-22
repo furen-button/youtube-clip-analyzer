@@ -3,6 +3,11 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 
+/**
+ * Fetch clip information from a YouTube URL using Puppeteer.
+ * @param {*} url 
+ * @returns {Promise<Object>} - A promise that resolves to the clip information.
+ */
 const fetchClipInfoPuppeteer = async (url) => {
   console.log('Starting browser...');
   const browser = await puppeteer.launch({
@@ -190,93 +195,103 @@ const formatTime = (milliseconds) => {
   return `${mins}m${secs}s (${seconds}s)`;
 };
 
-// コマンドライン引数を取得
-const args = process.argv.slice(2);
+/**
+ * メイン処理関数
+ */
+const main = async () => {
+  // コマンドライン引数を取得
+  const args = process.argv.slice(2);
 
-if (args.length === 0) {
-  console.error('Usage: youtube-clip-analyzer <YouTube Clip URL> [options]');
-  console.error('Example: youtube-clip-analyzer https://www.youtube.com/clip/UgkxzjQPU1Ug_59l4pDl9d6-E0WR_RbjTsSl');
-  console.error('\nOptions:');
-  console.error('  --json <file>    Save result to JSON file');
-  console.error('  --output <file>  Save result to JSON file (same as --json)');
-  console.error('  -o <file>        Save result to JSON file (short form)');
-  process.exit(1);
-}
+  if (args.length === 0) {
+    console.error('Usage: youtube-clip-analyzer <YouTube Clip URL> [options]');
+    console.error('Example: youtube-clip-analyzer https://www.youtube.com/clip/UgkxzjQPU1Ug_59l4pDl9d6-E0WR_RbjTsSl');
+    console.error('\nOptions:');
+    console.error('  --json <file>    Save result to JSON file');
+    console.error('  --output <file>  Save result to JSON file (same as --json)');
+    console.error('  -o <file>        Save result to JSON file (short form)');
+    process.exit(1);
+  }
 
-let clipUrl = null;
-let outputFile = null;
+  let clipUrl = null;
+  let outputFile = null;
 
-// Parse arguments
-for (let i = 0; i < args.length; i++) {
-  const arg = args[i];
+  // Parse arguments
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
 
-  if (arg === '--json' || arg === '--output' || arg === '-o') {
-    if (i + 1 < args.length) {
-      outputFile = args[i + 1];
-      i++;
+    if (arg === '--json' || arg === '--output' || arg === '-o') {
+      if (i + 1 < args.length) {
+        outputFile = args[i + 1];
+        i++;
+      } else {
+        console.error(`Error: ${arg} requires a filename`);
+        process.exit(1);
+      }
+    } else if (!clipUrl) {
+      clipUrl = arg;
+    }
+  }
+
+  if (!clipUrl) {
+    console.error('Error: Please specify a YouTube Clip URL');
+    process.exit(1);
+  }
+
+  // URLの検証
+  if (!clipUrl.includes('youtube.com/clip/') && !clipUrl.includes('youtu.be/clip/')) {
+    console.error('Error: Please provide a valid YouTube clip URL');
+    process.exit(1);
+  }
+
+  try {
+    const info = await fetchClipInfoPuppeteer(clipUrl);
+
+    // JSON output
+    if (outputFile) {
+      const jsonData = {
+        clipUrl: info.clipUrl,
+        videoUrl: info.videoUrl,
+        videoId: info.videoId,
+        title: info.title,
+        description: info.description,
+        thumbnail: info.image,
+        startTimeMs: info.startTimeMs,
+        endTimeMs: info.endTimeMs,
+        durationMs: info.durationMs,
+        startTimeFormatted: formatTime(info.startTimeMs),
+        endTimeFormatted: formatTime(info.endTimeMs),
+        extractedAt: new Date().toISOString()
+      };
+
+      try {
+        fs.writeFileSync(outputFile, JSON.stringify(jsonData, null, 2), 'utf8');
+        console.log(`✓ Clip information saved to ${outputFile}`);
+      } catch (err) {
+        console.error('Error: Failed to write file:', err.message);
+        process.exit(1);
+      }
     } else {
-      console.error(`Error: ${arg} requires a filename`);
-      process.exit(1);
+      // Console output
+      console.log('\n=== Clip Information ===');
+      console.log('Clip URL:', info.clipUrl);
+      console.log('Video URL:', info.videoUrl || 'N/A');
+      console.log('Video ID:', info.videoId || 'N/A');
+      console.log('Title:', info.title || 'N/A');
+      console.log('Description:', info.description || 'N/A');
+      console.log('Thumbnail:', info.image || 'N/A');
+      console.log('Start Time:', formatTime(info.startTimeMs));
+      console.log('End Time:', formatTime(info.endTimeMs));
+      console.log('Duration:', info.durationMs !== null ? `${info.durationMs / 1000}s` : 'N/A');
+      console.log('=======================\n');
     }
-  } else if (!clipUrl) {
-    clipUrl = arg;
+
+    process.exit(0);
+  } catch (err) {
+    console.error('\nError:', err.message);
+    console.error(err);
+    process.exit(1);
   }
-}
+};
 
-if (!clipUrl) {
-  console.error('Error: Please specify a YouTube Clip URL');
-  process.exit(1);
-}
-
-// URLの検証
-if (!clipUrl.includes('youtube.com/clip/') && !clipUrl.includes('youtu.be/clip/')) {
-  console.error('Error: Please provide a valid YouTube clip URL');
-  process.exit(1);
-}
-
-fetchClipInfoPuppeteer(clipUrl).then((info) => {
-  // JSON output
-  if (outputFile) {
-    const jsonData = {
-      clipUrl: info.clipUrl,
-      videoUrl: info.videoUrl,
-      videoId: info.videoId,
-      title: info.title,
-      description: info.description,
-      thumbnail: info.image,
-      startTimeMs: info.startTimeMs,
-      endTimeMs: info.endTimeMs,
-      durationMs: info.durationMs,
-      startTimeFormatted: formatTime(info.startTimeMs),
-      endTimeFormatted: formatTime(info.endTimeMs),
-      extractedAt: new Date().toISOString()
-    };
-
-    try {
-      fs.writeFileSync(outputFile, JSON.stringify(jsonData, null, 2), 'utf8');
-      console.log(`✓ Clip information saved to ${outputFile}`);
-    } catch (err) {
-      console.error('Error: Failed to write file:', err.message);
-      process.exit(1);
-    }
-  } else {
-    // Console output
-    console.log('\n=== Clip Information ===');
-    console.log('Clip URL:', info.clipUrl);
-    console.log('Video URL:', info.videoUrl || 'N/A');
-    console.log('Video ID:', info.videoId || 'N/A');
-    console.log('Title:', info.title || 'N/A');
-    console.log('Description:', info.description || 'N/A');
-    console.log('Thumbnail:', info.image || 'N/A');
-    console.log('Start Time:', formatTime(info.startTimeMs));
-    console.log('End Time:', formatTime(info.endTimeMs));
-    console.log('Duration:', info.durationMs !== null ? `${info.durationMs / 1000}s` : 'N/A');
-    console.log('=======================\n');
-  }
-
-  process.exit(0);
-}).catch((err) => {
-  console.error('\nError:', err.message);
-  console.error(err);
-  process.exit(1);
-});
+// メイン関数を実行
+main();
