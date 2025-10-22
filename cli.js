@@ -3,66 +3,69 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 
-async function fetchClipInfoPuppeteer(url) {
+const fetchClipInfoPuppeteer = async (url) => {
   console.log('Starting browser...');
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
-  
+
   try {
     const page = await browser.newPage();
-    
+
     console.log('Accessing URL:', url);
-    await page.goto(url, { 
+    await page.goto(url, {
       waitUntil: 'networkidle0',
       timeout: 60000
     });
-    
+
     console.log('Page loaded, extracting metadata...');
-    
+
     // Wait for meta tag
     try {
       await page.waitForSelector('meta[property="og:title"]', { timeout: 10000 });
-    } catch (e) {
+    } catch {
       console.log('Warning: og:title not found, continuing anyway...');
     }
-    
+
     // Extract metadata and page data
     const data = await page.evaluate(() => {
+      /* global document */
       const getMetaContent = (property) => {
         const meta = document.querySelector(`meta[property="${property}"]`);
         return meta ? meta.getAttribute('content') : null;
       };
-      
+
       // Get clip information from ytInitialData
       let clipData = null;
       let videoId = null;
       let startTimeMs = null;
       let endTimeMs = null;
-      
+
       try {
         // Search for clip information in page scripts
         const scripts = Array.from(document.querySelectorAll('script'));
         for (const script of scripts) {
           const text = script.textContent || '';
-          
+
           // Search for ytInitialPlayerResponse (priority)
           if (text.includes('var ytInitialPlayerResponse')) {
             const match = text.match(/var ytInitialPlayerResponse\s*=\s*({.+?});/s);
             if (match) {
               try {
                 const playerData = JSON.parse(match[1]);
-                
+
                 if (playerData.videoDetails) {
-                  if (!videoId) videoId = playerData.videoDetails.videoId;
+                  if (!videoId) {
+                    videoId = playerData.videoDetails.videoId;
+                  }
                 }
-                
+
                 // Search for clipConfig
                 if (playerData.clipConfig) {
                   clipData = playerData.clipConfig;
                 }
-                
+
                 // Search for microformat
                 if (playerData.microformat && playerData.microformat.playerMicroformatRenderer) {
                   const microformat = playerData.microformat.playerMicroformatRenderer;
@@ -75,35 +78,35 @@ async function fetchClipInfoPuppeteer(url) {
               }
             }
           }
-          
+
           // Search for ytInitialData
           if (text.includes('var ytInitialData')) {
             const match = text.match(/var ytInitialData\s*=\s*({.+?});/s);
             if (match) {
               try {
                 const ytData = JSON.parse(match[1]);
-                
+
                 // Search for object with time information
                 const findTimeInfo = (obj, depth = 0) => {
                   if (depth > 15 || !obj || typeof obj !== 'object') return null;
-                  
+
                   // Search for object with startTimeMs/endTimeMs
                   if (obj.startTimeMs !== undefined && obj.endTimeMs !== undefined) {
                     return obj;
                   }
-                  
+
                   // Search for clipConfig
                   if (obj.clipConfig && (obj.clipConfig.startTimeMs || obj.clipConfig.startTimeSeconds)) {
                     return obj.clipConfig;
                   }
-                  
+
                   for (const key in obj) {
                     const result = findTimeInfo(obj[key], depth + 1);
                     if (result) return result;
                   }
                   return null;
                 };
-                
+
                 const timeInfo = findTimeInfo(ytData);
                 if (timeInfo && !clipData) {
                   clipData = timeInfo;
@@ -114,21 +117,23 @@ async function fetchClipInfoPuppeteer(url) {
             }
           }
         }
-        
+
         // Extract information from clipData
         if (clipData) {
-          if (!videoId) videoId = clipData.postId || clipData.videoId || null;
-          startTimeMs = clipData.startTimeMs ? clipData.startTimeMs : 
-                     (clipData.startTimeSeconds * 1000) || null;
-          endTimeMs = clipData.endTimeMs ? clipData.endTimeMs : 
-                   (clipData.endTimeSeconds * 1000) || null;
+          if (!videoId) {
+            videoId = clipData.postId || clipData.videoId || null;
+          }
+          startTimeMs = clipData.startTimeMs ? clipData.startTimeMs :
+            (clipData.startTimeSeconds * 1000) || null;
+          endTimeMs = clipData.endTimeMs ? clipData.endTimeMs :
+            (clipData.endTimeSeconds * 1000) || null;
         }
-        
+
         // Extract video ID from thumbnail URL (fallback)
         if (!videoId) {
           const imageUrl = getMetaContent('og:image');
           if (imageUrl) {
-            const match = imageUrl.match(/\/vi\/([^\/]+)\//);
+            const match = imageUrl.match(/\/vi\/([^/]+)\//);
             if (match) {
               videoId = match[1];
             }
@@ -137,7 +142,7 @@ async function fetchClipInfoPuppeteer(url) {
       } catch (e) {
         console.error('Error parsing clip data:', e);
       }
-      
+
       return {
         title: getMetaContent('og:title'),
         description: getMetaContent('og:description'),
@@ -149,7 +154,7 @@ async function fetchClipInfoPuppeteer(url) {
         durationMs: (startTimeMs !== null && endTimeMs !== null) ? (endTimeMs - startTimeMs) : null
       };
     });
-    
+
     // Build original video URL
     let videoUrl = null;
     if (data.videoId) {
@@ -158,7 +163,7 @@ async function fetchClipInfoPuppeteer(url) {
         videoUrl += `&t=${Math.floor(data.startTimeMs / 1000)}s`;
       }
     }
-    
+
     return {
       clipUrl: url,
       videoUrl: videoUrl,
@@ -168,20 +173,22 @@ async function fetchClipInfoPuppeteer(url) {
       image: data.image,
       startTimeMs: data.startTimeMs,
       endTimeMs: data.endTimeMs,
-      durationMs: data.durationMs,
+      durationMs: data.durationMs
     };
   } finally {
     await browser.close();
   }
-}
+};
 
-function formatTime(milliseconds) {
-  if (milliseconds === null) return 'N/A';
+const formatTime = (milliseconds) => {
+  if (milliseconds === null) {
+    return 'N/A';
+  }
   const seconds = Math.floor(milliseconds / 1000);
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins}m${secs}s (${seconds}s)`;
-}
+};
 
 // コマンドライン引数を取得
 const args = process.argv.slice(2);
@@ -202,13 +209,13 @@ let outputFile = null;
 // Parse arguments
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
-  
+
   if (arg === '--json' || arg === '--output' || arg === '-o') {
     if (i + 1 < args.length) {
       outputFile = args[i + 1];
-      i++; // Skip next argument
+      i++;
     } else {
-      console.error('Error: ' + arg + ' requires a filename');
+      console.error(`Error: ${arg} requires a filename`);
       process.exit(1);
     }
   } else if (!clipUrl) {
@@ -227,7 +234,7 @@ if (!clipUrl.includes('youtube.com/clip/') && !clipUrl.includes('youtu.be/clip/'
   process.exit(1);
 }
 
-fetchClipInfoPuppeteer(clipUrl).then(info => {
+fetchClipInfoPuppeteer(clipUrl).then((info) => {
   // JSON output
   if (outputFile) {
     const jsonData = {
@@ -244,7 +251,7 @@ fetchClipInfoPuppeteer(clipUrl).then(info => {
       endTimeFormatted: formatTime(info.endTimeMs),
       extractedAt: new Date().toISOString()
     };
-    
+
     try {
       fs.writeFileSync(outputFile, JSON.stringify(jsonData, null, 2), 'utf8');
       console.log(`✓ Clip information saved to ${outputFile}`);
@@ -266,9 +273,9 @@ fetchClipInfoPuppeteer(clipUrl).then(info => {
     console.log('Duration:', info.durationMs !== null ? `${info.durationMs / 1000}s` : 'N/A');
     console.log('=======================\n');
   }
-  
+
   process.exit(0);
-}).catch(err => {
+}).catch((err) => {
   console.error('\nError:', err.message);
   console.error(err);
   process.exit(1);
