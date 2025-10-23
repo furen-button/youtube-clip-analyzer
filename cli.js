@@ -5,7 +5,7 @@ const fs = require('fs');
 
 /**
  * Fetch clip information from a YouTube URL using Puppeteer.
- * @param {*} url 
+ * @param {*} url
  * @returns {Promise<Object>} - A promise that resolves to the clip information.
  */
 const fetchClipInfoPuppeteer = async (url) => {
@@ -44,6 +44,7 @@ const fetchClipInfoPuppeteer = async (url) => {
       // Get clip information from ytInitialData
       let clipData = null;
       let videoId = null;
+      let channelId = null;
       let startTimeMs = null;
       let endTimeMs = null;
 
@@ -116,6 +117,29 @@ const fetchClipInfoPuppeteer = async (url) => {
                 if (timeInfo && !clipData) {
                   clipData = timeInfo;
                 }
+
+                // Search for channel ID
+                const findChannelId = (obj, depth = 0) => {
+                  if (depth > 20 || !obj || typeof obj !== 'object') return null;
+
+                  if (obj.browseId && obj.browseId.startsWith('UC')) {
+                    return obj.browseId;
+                  }
+
+                  if (obj.channelId && obj.channelId.startsWith('UC')) {
+                    return obj.channelId;
+                  }
+
+                  for (const key in obj) {
+                    const result = findChannelId(obj[key], depth + 1);
+                    if (result) return result;
+                  }
+                  return null;
+                };
+
+                if (!channelId) {
+                  channelId = findChannelId(ytData);
+                }
               } catch (e) {
                 console.error('Error parsing ytInitialData:', e);
               }
@@ -154,6 +178,7 @@ const fetchClipInfoPuppeteer = async (url) => {
         clipUrl: getMetaContent('og:url'),
         image: getMetaContent('og:image'),
         videoId: videoId,
+        channelId: channelId,
         startTimeMs: Number(startTimeMs),
         endTimeMs: Number(endTimeMs),
         durationMs: (startTimeMs !== null && endTimeMs !== null) ? (endTimeMs - startTimeMs) : null
@@ -173,6 +198,7 @@ const fetchClipInfoPuppeteer = async (url) => {
       clipUrl: url,
       videoUrl: videoUrl,
       videoId: data.videoId,
+      channelId: data.channelId,
       title: data.title,
       description: data.description,
       image: data.image,
@@ -252,6 +278,7 @@ const main = async () => {
         clipUrl: info.clipUrl,
         videoUrl: info.videoUrl,
         videoId: info.videoId,
+        channelId: info.channelId,
         title: info.title,
         description: info.description,
         thumbnail: info.image,
@@ -276,6 +303,7 @@ const main = async () => {
       console.log('Clip URL:', info.clipUrl);
       console.log('Video URL:', info.videoUrl || 'N/A');
       console.log('Video ID:', info.videoId || 'N/A');
+      console.log('Channel ID:', info.channelId || 'N/A');
       console.log('Title:', info.title || 'N/A');
       console.log('Description:', info.description || 'N/A');
       console.log('Thumbnail:', info.image || 'N/A');
