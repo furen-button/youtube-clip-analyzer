@@ -6,6 +6,7 @@
     "youtube-clip-analyzer": "./cli.js"
   },
   "scripts": {
+    "test": "bash scripts/e2e_test/test_1.sh",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
