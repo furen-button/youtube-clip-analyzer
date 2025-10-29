@@ -43,6 +43,8 @@ const fetchClipInfoPuppeteer = async (url) => {
 
       // Get clip information from ytInitialData
       let clipData = null;
+      let keywords = null;
+      let author = null;
       let videoId = null;
       let channelId = null;
       let startTimeMs = null;
@@ -64,6 +66,12 @@ const fetchClipInfoPuppeteer = async (url) => {
                 if (playerData.videoDetails) {
                   if (!videoId) {
                     videoId = playerData.videoDetails.videoId;
+                  }
+                  if (!keywords && playerData.videoDetails.keywords) {
+                    keywords = playerData.videoDetails.keywords;
+                  }
+                  if (!author && playerData.videoDetails.author) {
+                    author = playerData.videoDetails.author;
                   }
                 }
 
@@ -174,6 +182,8 @@ const fetchClipInfoPuppeteer = async (url) => {
 
       return {
         title: getMetaContent('og:title'),
+        keywords: keywords,
+        author: author,
         description: getMetaContent('og:description'),
         clipUrl: getMetaContent('og:url'),
         image: getMetaContent('og:image'),
@@ -196,6 +206,8 @@ const fetchClipInfoPuppeteer = async (url) => {
 
     return {
       clipUrl: url,
+      keywords: data.keywords,
+      author: data.author,
       videoUrl: videoUrl,
       videoId: data.videoId,
       channelId: data.channelId,
@@ -271,25 +283,26 @@ const main = async () => {
 
   try {
     const info = await fetchClipInfoPuppeteer(clipUrl);
+    const jsonData = {
+      clipUrl: info.clipUrl,
+      videoUrl: info.videoUrl,
+      videoId: info.videoId,
+      channelId: info.channelId,
+      title: info.title,
+      description: info.description,
+      keywords: info.keywords,
+      author: info.author,
+      thumbnail: info.image,
+      startTimeMs: info.startTimeMs,
+      endTimeMs: info.endTimeMs,
+      durationMs: info.durationMs,
+      startTimeFormatted: formatTime(info.startTimeMs),
+      endTimeFormatted: formatTime(info.endTimeMs),
+      extractedAt: new Date().toISOString()
+    };
 
     // JSON output
     if (outputFile) {
-      const jsonData = {
-        clipUrl: info.clipUrl,
-        videoUrl: info.videoUrl,
-        videoId: info.videoId,
-        channelId: info.channelId,
-        title: info.title,
-        description: info.description,
-        thumbnail: info.image,
-        startTimeMs: info.startTimeMs,
-        endTimeMs: info.endTimeMs,
-        durationMs: info.durationMs,
-        startTimeFormatted: formatTime(info.startTimeMs),
-        endTimeFormatted: formatTime(info.endTimeMs),
-        extractedAt: new Date().toISOString()
-      };
-
       try {
         fs.writeFileSync(outputFile, JSON.stringify(jsonData, null, 2), 'utf8');
         console.log(`✓ Clip information saved to ${outputFile}`);
@@ -300,16 +313,7 @@ const main = async () => {
     } else {
       // Console output
       console.log('\n=== Clip Information ===');
-      console.log('Clip URL:', info.clipUrl);
-      console.log('Video URL:', info.videoUrl || 'N/A');
-      console.log('Video ID:', info.videoId || 'N/A');
-      console.log('Channel ID:', info.channelId || 'N/A');
-      console.log('Title:', info.title || 'N/A');
-      console.log('Description:', info.description || 'N/A');
-      console.log('Thumbnail:', info.image || 'N/A');
-      console.log('Start Time:', formatTime(info.startTimeMs));
-      console.log('End Time:', formatTime(info.endTimeMs));
-      console.log('Duration:', info.durationMs !== null ? `${info.durationMs / 1000}s` : 'N/A');
+      console.log(JSON.stringify(jsonData, null, 2));
       console.log('=======================\n');
     }
 
