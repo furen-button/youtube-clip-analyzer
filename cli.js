@@ -225,7 +225,7 @@ const fetchClipInfoPuppeteer = async (url) => {
 
 /**
  * 時間をフォーマットする
- * @param {*} milliseconds 
+ * @param {*} milliseconds
  * @returns "HH:MM:SS"
  */
 const formatTime = (milliseconds) => {
