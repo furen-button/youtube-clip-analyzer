@@ -223,14 +223,24 @@ const fetchClipInfoPuppeteer = async (url) => {
   }
 };
 
+/**
+ * 時間をフォーマットする
+ * @param {*} milliseconds 
+ * @returns "HH:MM:SS"
+ */
 const formatTime = (milliseconds) => {
   if (milliseconds === null) {
     return 'N/A';
   }
-  const seconds = Math.floor(milliseconds / 1000);
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}m${secs}s (${seconds}s)`;
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts = [];
+  if (hours > 0) parts.push(String(hours).padStart(2, '0'));
+  parts.push(String(minutes).padStart(2, '0'));
+  parts.push(String(seconds).padStart(2, '0'));
+  return parts.join(':');
 };
 
 /**
